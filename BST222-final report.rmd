@@ -1,0 +1,1061 @@
+---
+title: "Analysis of Infection Control in Burn Patients: A Survival Analysis Report"
+author: "Jieying Ma"
+date: "2024.12.10"
+output:
+  html_document:
+    df_print: paged
+    number_sections: yes
+    toc: true
+    toc_depth : 4
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.pos = 'H')
+```
+
+```{r setup, include=FALSE}
+# Set global chunk options
+knitr::opts_chunk$set(
+  echo = FALSE,    # Do not display code in the output
+  message = FALSE, # Suppress messages
+  warning = FALSE  # Suppress warnings
+)
+```
+
+# Abstract {.unnumbered}
+
+This report evaluates the effectiveness of infection control methods in burn patients, focusing on the comparison between routine bathing and total body washing with an antimicrobial agent. The study aimed to assess survival outcomes, identify significant predictors of infection risk, and provide actionable clinical recommendations. Key findings reveal that total body washing significantly reduces infection risk compared to routine bathing, with a hazard reduction of approximately 52.7%. Additionally, surgical excision was shown to further decrease infection risk, while White patients were identified as a higher-risk group. Based on these findings, we recommend adopting total body washing as a standard infection control method, ensuring timely surgical excision, and implementing targeted interventions for high-risk populations to optimize patient outcomes.
+
+
+# Introduction
+
+## Background of the study
+
+The study by Ichida et al. (1993) investigates the impact of infection control strategies in burn patients, focusing on the prevention of Staphylococcus aureus infections. The main outcome of interest is the time to infection and infection status, which provide critical measures of the effectiveness of different treatment approaches. The study compares routine bathing with an alternative method of total body washing using an antimicrobial agent, aiming to determine whether this intervention reduces infection risk. The purpose of this report is to analyze the survival data from the study, evaluate the effectiveness of total body washing, and identify key predictors of infection risk, providing actionable recommendations for clinical infection control practices.
+
+## Objective of the analysis
+
+The objective of this analysis is to evaluate survival data to assess the effectiveness of treatment in reducing infection risk among burn patients. By identifying significant time-independent predictors (e.g., treatment type, demographic factors) and time-dependent predictors (e.g., timing of surgical excision and antibiotic administration), this study aims to provide a comprehensive understanding of factors influencing patient outcomes. Ultimately, the analysis seeks to deliver actionable insights that can guide clinicians in optimizing infection control strategies and tailoring treatment plans to improve patient care.
+
+
+# Data overview
+
+## Description of variables
+
+The dataset captures information on 154 burn patients, with key variables related to demographics, infection outcomes, and clinical characteristics, focusing on the key outcome of Staphylococcus aureus infection and the factors that may influence it. The definition and factor levels of all the variables are shown in the table below:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Load required library
+library(kableExtra)
+library(DT)
+
+# Create the data frame for the table
+data <- data.frame(
+  `Variables Name` = c(
+    "**Outcome Variables**", 
+    "Time to Infection", "Infection Status",
+    "**Ordinary Covariates**",
+    "Treatment", "Gender", "Race", "PercentBurned", 
+    "SiteHead", "SiteButtock", "SiteTrunk", "SiteUpperLeg", 
+    "SiteLowerLeg", "SiteRespTract", "BurnType",
+    "**Time-Dependent Predictors**",
+    "Time to Excision", "Excision Indicator",
+    "Time to Prophylactic Antibiotic Treatment", "Prophylactic Antibiotic Treatment Indicator"
+  ),
+  `Variable Abbreviation` = c(
+    "", 
+    "T3", "D3",
+    "",
+    "Z1", "Z2", "Z3", "Z4", 
+    "Z5", "Z6", "Z7", "Z8", 
+    "Z9", "Z10", "Z11",
+    "",
+    "T1", "D1",
+    "T2", "D2"
+  ),
+  `Definition and Factor Levels` = c(
+    "", 
+    "Time to Staphylococcus aureus infection or on study time", 
+    "Staphylococcus aureus infection: 1 = yes, 0 = no",
+    "",
+    "Routine/Cleansing", "Male/Female", "Nonwhite/White", 
+    "Percentage of total surface area burned", 
+    "NotBurned/Burned", "NotBurned/Burned", "NotBurned/Burned", 
+    "NotBurned/Burned", "NotBurned/Burned", "NotBurned/Burned", 
+    "Chemical/Scald/Electric/Flame",
+    "",
+    "Time to excision or on study time", 
+    "Excision indicator: 1 = yes, 0 = no",
+    "Time to prophylactic antibiotic treatment or on study time", 
+    "Prophylactic antibiotic treatment indicator: 1 = yes, 0 = no"
+  )
+)
+
+# Generate the table with formatting
+kable(data, col.names = c("Variables Name", "Variable Abbreviation", "Definition and Factor Levels")) %>%
+  kable_styling(full_width = TRUE, position = "left") %>%
+  row_spec(0, bold = TRUE) %>% # Bold the header
+  add_header_above(c("Table 1. Variables in the Burn Study"=3))
+```
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# change variable names
+library(KMsurv)
+library(survival)
+data(burn)
+burn1 <- burn
+burn1 <- data.frame(burn1,Treatment=factor(burn1$Z1,labels=c("Routine","Cleansing")))
+burn1 <- data.frame(burn1,Gender=factor(burn1$Z2,labels=c("Male","Female")))
+burn1 <- data.frame(burn1,Race=factor(burn1$Z3,labels=c("Nonwhite","White")))
+burn1 <- data.frame(burn1,PercentBurned=burn1$Z4)
+burn1 <- data.frame(burn1,SiteHead=factor(burn1$Z5,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteButtock=factor(burn1$Z6,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteTrunk=factor(burn1$Z7,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteUpperLeg=factor(burn1$Z8,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteLowerLeg=factor(burn1$Z9,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteRespTract=factor(burn1$Z10,labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,BurnType=factor(burn1$Z11,labels=c("Chemical","Scald","Electric","Flame")))
+drop <- c("Z1",  "Z2",  "Z3",  "Z4",  "Z5",  "Z6",  "Z7",  "Z8",  "Z9",  "Z10", "Z11")
+burn1 <- burn1[,!names(burn1) %in% drop]
+head(burn1)
+```
+
+```{r  echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+summary(burn1)
+```
+
+
+The following table provides descriptive statistics for the numerical variables, including minimum, first quartile (Q1), mean, median, third quartile (Q3), and maximum values.
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+selected_columns <- c("PercentBurned", "T1", "T2", "T3")
+numerical_vars <- burn1[, selected_columns]
+
+# Calculate descriptive statistics
+summary_table <- data.frame(
+  # Variable = colnames(numerical_vars),
+  Min = apply(numerical_vars, 2, min),
+  Q1 = apply(numerical_vars, 2, function(x) quantile(x, 0.25)),
+  Mean = apply(numerical_vars, 2, mean),
+  Median = apply(numerical_vars, 2, median),
+  Q3 = apply(numerical_vars, 2, function(x) quantile(x, 0.75)),
+  Max = apply(numerical_vars, 2, max)
+)
+
+# View the table
+# print(summary_table)
+rownames(summary_table) <- c("Burn Percentage", "Time to Excision (T1)", 
+                             "Time to Antibiotic Treatment (T2)", 
+                             "Time to Infection (T3)")
+
+# Format the summary table
+kable(summary_table, col.names = c( "Min", "Q1", "Mean", "Median", "Q3", "Max")) %>%
+  kable_styling(full_width = TRUE, position = "left") %>%
+  row_spec(0, bold = TRUE) %>% # Bold the header
+  add_header_above(c("Table 2. Descriptive Statistics for Numerical Variables"=7))
+
+```
+
+
+The following table summarizes the factor variables in the dataset, displaying their levels, counts, and percentages to provide an overview of the data distribution.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+burn_factors <- burn1
+# Convert D1, D2, D3 to factors with appropriate labels
+burn_factors$`Excision Indicator` <- factor(burn_factors$D1, levels = c(0, 1), labels = c("No", "Yes"))
+burn_factors$`Prophylactic Antibiotic Treatment Indicator` <- factor(burn_factors$D2, levels = c(0, 1), labels = c("No", "Yes"))
+burn_factors$`Infection Status` <- factor(burn_factors$D3, levels = c(0, 1), labels = c("No", "Yes"))
+
+# burn_factors
+```
+
+<center>**Table 3. Summary of factor variables**</center>
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Select factor variables
+factor_vars <- burn_factors[, c(
+  names(burn_factors[, sapply(burn_factors, is.factor)]))]
+
+
+
+# Create a table with Variable Name, Level, Count, and Percentage
+factor_summary <- do.call(rbind, lapply(names(factor_vars), function(var) {
+  levels_data <- table(factor_vars[[var]])
+  data.frame(
+    Variable = var,
+    Level = names(levels_data),
+    Count = as.numeric(levels_data),
+    Percentage = round(100 * levels_data / sum(levels_data), 2)
+  )
+}))
+factor_summary <- factor_summary[, -4]
+colnames(factor_summary)[4] <- "Percentage (%)"
+
+# Adjust the Variable column to show only the first row for each variable
+factor_summary$Variable <- with(factor_summary, ifelse(duplicated(Variable), "", Variable))
+
+factor_summary
+
+# # Format the table
+# kable(factor_summary[,c(1,2,3,5)], col.names = c("Variable Name", "Level", "Count", "Percentage (%)")) %>%
+#   kable_styling(full_width = TRUE, position = "center") %>%
+#   row_spec(0, bold = TRUE)
+
+# # Create the interactive datatable
+# datatable(
+#   factor_summary,
+#   colnames = c("Variable Name", "Level", "Count", "Percentage (%)"),
+#   options = list(
+#     pageLength = 10,       # Number of rows per page
+#     lengthMenu = c(5, 10, 15, 20), # Options for rows per page
+#     autoWidth = TRUE,      # Adjust column widths
+#     dom = 'ltipr',         # Controls the table elements
+#     scrollX = TRUE         # Enables horizontal scrolling
+#   ),
+#   rownames = FALSE,         # Removes row numbers
+#   class = "display nowrap",     # Default table class
+#   fillContainer = TRUE          # Enable full-width layout
+# )%>%
+#   formatStyle(
+#     "Variable", textAlign = "left", fontWeight = "bold"  # Align to left and bold variable name
+#   ) %>%
+#   formatStyle(
+#     "Level", textAlign = "center"                            # Align level column to center
+#   ) %>%
+#   formatStyle(
+#     "Count", textAlign = "center"                            # Align count column to center
+#   ) %>%
+#   formatStyle(
+#     "Percentage (%)", textAlign = "center"                   # Align percentage column to center
+#   )
+```
+
+
+## Non-Random Assignment and Dataset Limitations
+
+The dataset used in this study has notable limitations, including the non-random assignment of treatment and the use of historical control groups. Non-random assignment means that patients received either routine bathing or antimicrobial cleansing based on non-random criteria, such as clinician decision, patient preference, or resource availability. This introduces selection bias, leading to systematic differences between groups (e.g., differing burn severity or demographics) and making it difficult to isolate the treatment effect. Furthermore, confounding variables that influence both treatment assignment and outcomes may distort the true relationship. The inclusion of historical controls—patients treated in the past who differ systematically from the treated group due to changes in medical practices, hospital conditions, or demographics—poses additional challenges. These factors can result in temporal differences, unmeasured confounding, and reduced generalizability of the findings. As such, statistical adjustments, such as multivariable modeling or propensity score matching, are essential to mitigate these biases. However, even with adjustments, the results must be interpreted cautiously, as causal inferences are inherently limited.
+
+
+# Survival Analysis
+
+In this study, we conducted a comprehensive survival analysis to evaluate the impact of treatment and other covariates on the time to staphylococcus aureus infection in burn patients. We began by plotting Kaplan-Meier curves for treated and untreated patients and used the log-rank test to determine whether there was a significant difference between the two groups. To assess proportionality and visualize hazard trends, we plotted cumulative hazards against time and complimentary log-log survival against log time. Next, we constructed a Cox proportional hazards model using time-independent predictors, initially focusing solely on Treatment and subsequently considering additional covariates, with special attention to burn site variables. We performed model diagnostics to validate assumptions and refine the model as necessary. Finally, we extended the analysis by incorporating time-dependent covariates, such as surgical excision and prophylactic antibiotic treatment, into the model and conducted further diagnostics to ensure the robustness of our findings.
+
+## Kaplan-Meier Curves
+
+Infection control is critical in burn patients, as infections can lead to severe complications and delay recovery. Comparing the infection risk between patients receiving routine bathing and those undergoing total body antimicrobial washing helps determine whether the treatment reduces the likelihood of Staphylococcus aureus infection. Kaplan-Meier survival curves allow us to visualize the time until infection for both groups, while the log-rank test helps confirm whether the observed differences in infection risk are significant. This analysis provides essential evidence to evaluate the effectiveness of the antimicrobial washing protocol.
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(survival)
+library(survminer)
+
+# Create a survival object for infection time and status
+surv_object <- Surv(burn1$T3, burn1$D3)
+
+# Fit Kaplan-Meier curves for treatment groups
+km_fit <- survfit(surv_object ~ Treatment, data = burn1)
+
+# Plot Kaplan-Meier survival curves
+ggsurvplot(
+  km_fit,
+  data = burn1,
+  conf.int = TRUE,                # Show confidence intervals
+  pval = TRUE,                    # Add p-value from log-rank test
+  risk.table = FALSE,              # Add a risk table below the plot
+  legend.title = "Treatment",     # Legend title
+  legend.labs = c("Routine", "Cleansing"), # Legend labels
+  xlab = "Time to Infection (days)",      # X-axis label
+  ylab = "Infection-Free Survival Probability", # Y-axis label
+  title = "Figure 1. Kaplan-Meier Curves: Infection Risk by Treatment Group",
+  ggtheme = theme_minimal()       # Use a clean theme
+)
+```
+
+```{r include=FALSE}
+# Perform the log-rank test to compare survival curves
+log_rank_test <- survdiff(surv_object ~ Treatment, data = burn1)
+print(log_rank_test)
+```
+The survival curves show that the Cleansing group generally maintains a higher infection-free survival probability over time compared to the Routine group. The visible gap suggesting that cleansing with antimicrobial agents might reduce the risk of infection. The shaded areas around the curves, representing the 95% confidence intervals. As it shows some overlap between the two area, particularly in the early stages, there is some uncertainty in the difference between the groups. The log-rank test yields a p-value of 0.051, slightly above the conventional threshold of 0.05 for statistical significance. This result only indicates a marginally significant difference between the survival curves, suggesting a potential benefit of cleansing in reducing infection risk but with limited confidence.
+
+
+## Cumulative Hazard and Log-Log Survival Analysis
+
+Understanding how infection risk evolves over time is crucial for guiding clinical interventions. Cumulative hazard plots provide a visual representation of the time-based infection risk patterns, helping to identify periods when patients are at higher risk. Additionally, log-log survival plots are used to verify the proportional hazards assumption of the Cox model, ensuring the reliability and validity of subsequent survival analyses.
+
+
+```{r}
+# Plot cumulative hazard
+ggsurvplot(
+  km_fit,
+  data = burn1,
+  fun = "cumhaz",                     # Cumulative hazard plot
+  xlab = "Time to Infection (days)",  # X-axis label
+  ylab = "Cumulative Hazard",         # Y-axis label
+  title = "Figure 2. Cumulative Hazard: Infection Risk Over Time",
+  ggtheme = theme_minimal(),          # Use a clean theme
+  legend.title = "Treatment",
+  legend.labs = c("Routine", "Cleansing") # Legend labels
+)
+```
+
+The Routine group (red curve) shows a consistently higher cumulative hazard compared to the Cleansing group (blue curve) throughout the observation period. The Routine group exhibits a steeper increase in cumulative hazard before 12 days and between 44–50 days, suggesting higher infection risk during these periods. In contrast, the Cleansing group demonstrates a slower and more gradual increase in cumulative hazard. The consistently lower cumulative hazard in the Cleansing group supports the potential effectiveness of antimicrobial washing in reducing the risk of infection.
+
+
+
+```{r}
+# Plot complementary log-log survival vs. log time
+ggsurvplot(
+  km_fit,
+  data = burn1,
+  fun = "cloglog",                        # Complementary log-log plot
+  xlab = "Log(Time to Infection)",        # X-axis label
+  ylab = "Log(-Log(Survival Probability))", # Y-axis label
+  title = "Figure 3. Log-Log Survival Plot: Checking Proportional Hazards",
+  ggtheme = theme_minimal(),              # Use a clean theme
+  legend.title = "Treatment",
+  legend.labs = c("Routine", "Cleansing") # Legend labels
+)
+```
+
+As the red and blue curves are mostly parallel, the proportional hazards assumption is reasonably valid, meaning that the Cox model can be reliably applied to analyze the effect of treatment on infection risk.
+
+
+## Cox Model Analysis with Time-Independent Predictors
+
+To assess the independent effects of treatment and patient characteristics (such as burn sites) on infection risk, we will construct a Cox proportional hazards model. The hazard function for an individual $i$ is defined as:
+
+$$h_i(t) = h_0(t) \exp(\beta_1 X_{1i} + \beta_2 X_{2i} + \cdots + \beta_p X_{pi})$$
+
+where:
+
+- $h_0(t)$: Baseline hazard (unspecified function of time).
+- $X_{1i}, X_{2i}, \cdots, X_{pi}$: Covariates for individual 
+- $\beta_1, \beta_2, \cdots, \beta_p$: Coefficients to estimate the effect of covariates.
+
+
+Initially, we will start by including only Treatment as the predictor. Afterward, we will test the model performance by adding all other variables except the burn site variables. Next, we will decide whether to include burn site variables (e.g., head, trunk, limbs) in the model. It is important to note that burn site variables are not factors, as a patient may have burns at multiple locations simultaneously. Additionally, the respiratory tract burn site is distinct from others because it involves internal injuries rather than skin-related injuries. Finally, we will apply stepwise regression to identify the best-fitting model and evaluate whether it aligns with our prior conclusions. At the end, we will perform model diagnostics to check the assumptions and reliability of the final model.
+
+
+
+
+### Cox Model with Treatment Only
+
+First, we fit the Cox Model using Treatment as the only predictor. The formula can be shown as follow:
+
+$$h_i(t) = h_0(t) \exp(\beta_1 \text{Treatment})$$
+
+Summary of the model is shown in the table below. As the p-value of the Likelihood Ratio Test for this Cox Model is 0.05 and the p-value of the Treatment variable is 0.056, we can say that Treatment has a borderline statistically significant association with the hazard of infection. This suggests that the type of treatment (routine bathing or cleansing) may influence the risk of infection, but the evidence is not very strong. Further analysis with additional covariates is needed to confirm and refine this relationship.
+```{r include=FALSE}
+# Fit a Cox model using only Treatment
+cox_treatment <- coxph(Surv(T3, D3) ~ Treatment, data = burn1)
+
+# Summary of the model
+summary(cox_treatment)
+```
+
+```{r}
+library(knitr)
+library(kableExtra)
+
+summary_cox_treatment = summary(cox_treatment)
+cox_output_treatment <- data.frame(
+  Variable = rownames(summary_cox_treatment$coefficients),
+  Coefficient = summary_cox_treatment$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_treatment$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_treatment$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_treatment$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_treatment$coefficients[, "z"],
+  `P-value` = summary_cox_treatment$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_treatment[, -1] <- round(cox_output_treatment[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_treatment, format = "html", align = "c",
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 4. Cox Model Summary - Using Only Treatment" = 7))
+```
+
+
+
+
+
+### Adding Other Time-Independent Predictors
+
+We first extended the Cox model by adding all variables except burn site variables to the baseline model that included only Treatment. Its formula can be shown as follow:
+
+$$h(t|X) = h_0(t) \exp\left(\beta_1 \cdot \text{Treatment} + \beta_2 \cdot \text{Gender} + \beta_3 \cdot \text{Race} + \beta_4 \cdot \text{PercentBurned} + \beta_5 \cdot \text{BurnType}\right)$$
+
+We then compared the two models using an ANOVA test. The ANOVA comparison between the Cox Model Using Only Treatment and the Cox Model Without Burn Sites resulted in a p-value of 0.002, which is less than the 5% statistical significance level. This indicates that adding more variables to the model significantly improves its explanatory power, supporting the inclusion of these additional covariates in the analysis.
+
+
+```{r include=FALSE}
+# Fit a Cox model with Treatment and additional predictors
+cox_nosite <- coxph(Surv(T3, D3) ~ Treatment+Gender+Race+PercentBurned+BurnType, 
+                  data = burn1)
+
+# Summary of the full model
+summary(cox_nosite)
+```
+
+```{r include=FALSE}
+anova(cox_treatment, cox_nosite, test = "LRT")
+```
+
+The summary of the Cox Model Without Burn Sites is shown in the table below. Among the predictors, only Treatment and Race are statistically significant at the 5% level, while BurnTypeElectric is statistically significant at the 10% level. Therefore, we can conclude that Treatment and Race are important independent predictors of infection risk, whereas BurnTypeElectric might also influence the model, but further research or a larger sample size is needed to confirm its effect.
+
+```{r}
+library(kableExtra)
+
+summary_cox_nosite = summary(cox_nosite)
+cox_output_nosite <- data.frame(
+  Variable = rownames(summary_cox_nosite$coefficients),
+  Coefficient = summary_cox_nosite$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_nosite$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_nosite$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_nosite$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_nosite$coefficients[, "z"],
+  `P-value` = summary_cox_nosite$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_nosite[, -1] <- round(cox_output_nosite[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_nosite, format = "html", align = "c",
+      row.names = FALSE,
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 5. Cox Model Summary - Without Burn Sites" = 7))
+```
+
+
+Since the p-values for Gender and Percent Burned are relatively large (0.180, 0.536), indicating that they do not significantly contribute to the model, we decided to exclude them from the final model. Removing these variables simplifies the model while retaining its predictive power and interpretability. We now get a model with only Treatment, Race and Burn Type. The summary of it is shown in the table below.
+
+```{r include=FALSE}
+cox_strong <- coxph(Surv(T3, D3) ~ Treatment+Race+BurnType, data = burn1)
+summary(cox_strong)
+```
+
+```{r}
+library(kableExtra)
+
+summary_cox_strong = summary(cox_strong)
+cox_output_strong <- data.frame(
+  Variable = rownames(summary_cox_strong$coefficients),
+  Coefficient = summary_cox_strong$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_strong$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_strong$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_strong$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_strong$coefficients[, "z"],
+  `P-value` = summary_cox_strong$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_strong[, -1] <- round(cox_output_strong[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_strong, format = "html", align = "c",
+      row.names = FALSE,
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 6. Cox Model Summary - With only Treatment, Race and Burn Type" = 7))
+```
+
+
+We then included the burn site variables and compared this new Cox Model with the Cox Model with only Treatment, Race and Burn Type using an anova test. The result showed a p-value of 0.7835, which is much greater than the 5% statistical significance level. Therefore, adding more burn site variables does not improve the model, suggesting that these variables may have limited contribution to predicting infection risk.
+
+
+```{r include=FALSE}
+# Fit a Cox model with Treatment and additional predictors
+cox_full <- coxph(Surv(T3, D3) ~ Treatment+Race+SiteHead+SiteButtock+SiteTrunk+SiteUpperLeg+SiteLowerLeg+SiteRespTract+BurnType, 
+                  data = burn1)
+
+# Summary of the full model
+summary(cox_full)
+```
+
+```{r include=FALSE}
+anova(cox_strong, cox_full, test = "LRT")
+```
+
+The summary of the Cox Model with Burn Sites is shown in the table below. Among the predictors, only Treatment, Race and Burn Type-Electric remain statistically significant at the 5% level. As the respiratory tract burn site variable is different from the others since it does not focus on skin, we used ANOVA to compare the Cox Model without Burn Sites against three other models: the Cox Model with all Burn Sites, the Cox Model with only Skin Burn Sites, and the Cox Model with the Respiratory Tract Burn Site. The p-values for these comparisons were 0.7835, 0.7156, and 0.5181, respectively, all of which are greater than the 5% statistical significance threshold. This indicates that adding burn site variables, whether as a whole or in subsets, does not significantly improve the model. Therefore, we decided not to include burn site variables in the model to maintain its simplicity and interpretability.
+
+
+```{r}
+summary_cox_full = summary(cox_full)
+cox_output_full <- data.frame(
+  Variable = rownames(summary_cox_full$coefficients),
+  Coefficient = summary_cox_full$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_full$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_full$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_full$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_full$coefficients[, "z"],
+  `P-value` = summary_cox_full$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_full[, -1] <- round(cox_output_full[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_full, format = "html", align = "c",
+      row.names = FALSE,
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 7. Cox Model Summary - with Burn Sites" = 7))
+```
+
+
+```{r include=FALSE}
+anova(cox_strong, 
+      coxph(Surv(T3, D3) ~ Treatment+Race+SiteHead+SiteButtock+SiteTrunk+SiteUpperLeg+SiteLowerLeg+SiteRespTract+BurnType, 
+                  data = burn1),
+      test = "LRT")
+anova(cox_strong, 
+      coxph(Surv(T3, D3) ~ Treatment+Race+SiteHead+SiteButtock+SiteTrunk+SiteUpperLeg+SiteLowerLeg+BurnType, 
+                  data = burn1),
+      test = "LRT")
+anova(cox_strong, 
+      coxph(Surv(T3, D3) ~ Treatment+Race+SiteRespTract+BurnType, 
+                  data = burn1),
+      test = "LRT")
+```
+
+
+
+Our final Cox Model with time-independent predictors is: 
+
+$$h(t|X) = h_0(t) \exp\left(
+-0.601 \cdot \text{Treatment} 
++ 2.284 \cdot \text{Race}
++ \begin{cases} 
+0, & \text{if BurnType = Chemical} \\
+1.579, & \text{if BurnType = Scald} \\
+2.172, & \text{if BurnType = Electric} \\
+1.003, & \text{if BurnType = Flame}
+\end{cases}
+\right)$$
+
+
+Here is the visualization of the hazard ratios.
+
+
+```{r}
+# Visualize hazard ratios with confidence intervals
+ggforest(cox_strong, data = burn1, 
+         main = "Figure 4. Hazard Ratios for Time-Independent Predictors")
+```
+
+With a hazard ratio of 0.548 (HR < 1), Cleansing significantly reduces infection risk by 45.2%, making it an effective intervention for improving infection control.
+With a hazard ratio of 9.818 (HR > 1), being White significantly increases infection risk by 881.8%, warranting further investigation into potential biological or social factors influencing this outcome. 
+Scald burns increase infection risk by 384.8% with a hazard ratio of 4.848 (HR > 1), and Flame burns increase infection risk by 172.8% with a hazard ratio of 2.728 (HR > 1), though these effects are not statistically significant and warrants close patient monitoring.
+With a hazard ratio of 8.775 (HR > 1), Electric burns increase infection risk by 777.5% with marginal significance.
+
+
+The model’s Likelihood ratio test yielded a p-value of 6e-04, indicating that all variables collectively have statistical significance in predicting infection risk. The included variables independently contribute to the risk of infection, highlighting their potential value in clinical decision-making.
+
+
+
+### Model Diagnostic
+
+To ensure the validity and reliability of the Cox model, it is crucial to run diagnostic checks. The proportional hazards assumption is a fundamental requirement for the Cox model. This can be tested using Schoenfeld residuals:
+
+```{r}
+# Perform Schoenfeld residuals test
+ph_test <- cox.zph(cox_strong)
+
+# Convert the test results into a data frame
+ph_test_df <- as.data.frame(ph_test$table)
+
+# Add appropriate column names
+colnames(ph_test_df) <- c("Chi-Square", "Degrees of Freedom", "P-Value")
+
+# Create a formatted kable table and assign a name
+kable(
+  ph_test_df, 
+  format = "html", 
+  digits = 3,  # Round to 3 decimal places
+) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%  # Highlight header row
+  add_header_above(c("Table 8. Proportional Hazards Assumption Test" = 4))
+
+```
+
+
+From the results above, it can be observed that the p-values for Treatment (0.541) and Race (0.124) are all greater than 0.05, indicating no evidence of a violation of the proportional hazards assumption for these variables. However, the p-value for Burn Type (0.043) is less than 0.05, suggesting that the proportional hazards assumption may be violated for the BurnType variable. This violation contributes to the p-value for the GLOBAL test (0.033) being less than 0.05, providing marginal evidence of an overall violation of the proportional hazards assumption.
+
+
+```{r}
+par(mfrow = c(2, 2))
+plot(ph_test, var = "Treatment", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for Treatment")
+plot(ph_test, var = "Race", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for Race")
+plot(ph_test, var = "BurnType", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for BurnType")
+
+# Add a global title
+mtext("Figure 5. Schoenfeld Residuals for Cox Model with Time-Independent Predictors", side = 3, line = -1, outer = TRUE)
+
+par(mfrow = c(1, 1))
+```
+
+
+The Schoenfeld residual plots indicate that the proportional hazards assumption is reasonably met for Treatment and Race (residuals fluctuate randomly around zero), but there is evidence of a potential violation for BurnType (a noticeable trend over time).
+Therefore, we need to use stratification, as it allows the baseline hazard to vary by the stratified variable, addressing the non-proportionality for BurnType. By stratifying the model on Burn Type, we account for the varying baseline hazard across its levels, ensuring that the proportional hazards assumption holds for the remaining covariates. This approach improves the model's fit and ensures more reliable results.
+
+
+```{r include=FALSE}
+surv_object <- Surv(burn1$T3, burn1$D3)
+KMcurves_BurnType <- survfit(surv_object ~ BurnType, data = burn1)
+plot(KMcurves_BurnType, col = 1:4, main = "KM Curves for BurnType")
+legend("topright", legend = c("Chemical","Scald","Electric","Flame"), col = 1:4, lty = 1)
+```
+
+
+```{r include=FALSE}
+strat.cox <- coxph(Surv(T3, D3) ~ Treatment + Race + strata(BurnType), data = burn1)
+summary(strat.cox)
+```
+
+We need to test the assumption of the same regression coefficients for each stratum by testing the interaction between the stratification variable and the covariates. We get a p-value of 0.4467 from the ANOVA which means that there is no significant difference between the stratified model with interaction and the stratified model without interaction terms. This means that the coefficients are not significantly different between the stratified models and the only difference is in the baseline hazard. So it is appropriate to use a stratified model.
+
+
+```{r include=FALSE}
+#fit interaction model
+inter.cox <- coxph(Surv(T3, D3) ~ (Treatment + Race)*strata(BurnType), data = burn1)
+summary(inter.cox)
+```
+
+
+```{r include=FALSE}
+anova(strat.cox, inter.cox, test = "Chisq")
+```
+
+So our final Cox Model can be shown as:
+
+$$
+h(t|X) = h_0^{\text{BurnType}}(t) \exp\left(-0.6243 \cdot \text{Treatment} + 2.2698 \cdot \text{Race}\right)
+$$
+
+The baseline Hazard $h_0^{\text{BurnType}}(t)$ varies across the levels of BurnType (Chemical, Scald, Electric, Flame), shown in Table 6. The cleansing reduces the risk of infection by approximately 46.4% compared to Routine. White patients have approximately 867.8% higher infection risk compared to Nonwhite patients.
+
+```{r}
+# Extract the baseline cumulative hazard for the stratified Cox model
+baseline_hazard <- basehaz(strat.cox, centered = FALSE)
+
+# View the baseline hazard for each stratum
+# head(baseline_hazard)
+
+# Plot the baseline cumulative hazards for each stratum
+library(ggplot2)
+
+ggplot(baseline_hazard, aes(x = time, y = hazard, color = strata)) +
+  geom_step() +
+  labs(
+    title = "Table 6. Baseline Cumulative Hazard by BurnType",
+    x = "Time",
+    y = "Cumulative Hazard",
+    color = "BurnType"
+  ) +
+  theme_minimal()
+
+```
+
+
+### Outliers and Influential Points
+
+
+```{r include=FALSE}
+#fit residuals: martingale, deviance, and df beta
+strat.cox.mart <- residuals(strat.cox,type="martingale")
+strat.cox.dev <- residuals(strat.cox,type="deviance")
+strat.cox.dfb <- residuals(strat.cox,type="dfbeta")
+
+#find linear predictor
+strat.cox.preds <- predict(strat.cox)
+```
+
+
+
+The plots have been included in the appendix, and from these plots, the following outliers were identified:
+
+- Martingale Residuals: 79, 153, 116, 32, 22, 41
+
+- Deviance Residuals: 79, 153, 115, 32, 22, 41
+
+- Treatment Influence: 32, 79, 90, 116, 115, 153
+
+- Race Influence: 64, 37, 48, 67
+
+The most important observations to examine seem to be 32, 79, 115, 116, 153.
+
+
+
+```{r}
+unusuals <- c(32, 79, 115, 116, 153)
+selected_rows <- burn1[burn1$Obs %in% unusuals, c("Obs", "T3", "D3", "Treatment", "Race", "BurnType")]
+
+kable(selected_rows, 
+      row.names = F,
+      col.names = c("Observation", "Time to Infection", "Infection Status", "Treatment", "Race", "Burn Type")) %>%
+  kable_styling(full_width = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  add_header_above(c("Table 9. Ourliers of Cox Model with Time-Independent Predictors" = 6))
+```
+
+Obs 32 is under the Routine treatment and is White but live relatively long and without straphylocous aureaus infection. Obs 79,115,153 are under the Cleansing treatment but live very short and get straphylocous aureaus infection soon. Obs 116 is under the Cleansing treatment and is Nonwhite so live relatively long and without straphylocous aureaus infection.
+
+
+## Cox Model Analysis with Time-Dependent Predictors
+
+To enhance the analysis of infection risk, we incorporate time-dependent predictors into the Cox proportional hazards model. This approach captures the dynamic effects of events such as surgical excision and prophylactic antibiotic treatment, which occur at different times during the observation period. The new dataset was constructed to reflect these changes:
+
+- Excision: A time-dependent covariate indicating whether surgical excision has occurred at a given time (1=yes,0=no).
+- Antibiotics: A time-dependent covariate indicating whether prophylactic antibiotics have been administered (1=yes,0=no).
+- status: An outcome variable indicating whether an individual experienced the event (infection,1) or was censored (0).
+
+By combining these time-dependent covariates with static predictors such as treatment type and race, we aim to identify both the fixed and dynamic factors that influence infection risk over time. This refined model structure enables a more precise understanding of high-risk periods and the effectiveness of clinical interventions.
+
+### Best Cox Model with Time-Dependent Predictors
+
+```{r include=FALSE}
+#for the time varying covariates
+#first use tmerge to set stopping time
+burn2 <- tmerge(burn1, burn1, Obs, tstop=T3)
+
+#set time to excision
+burn2 <- tmerge(burn2, burn1, Obs, Excision = tdc(T1))
+
+#set time to antibiotics
+burn2 <- tmerge(burn2, burn1, Obs, Antibiotics = tdc(T2))
+
+#status at the end, either they had an infection or they were censored
+status <- as.integer(with(burn2, (tstop == T3 & D3)))
+
+#put together
+burn2 <- data.frame(burn2,status)
+
+head(burn2)
+```
+
+We first fit the Cox model with all time-dependent and time-independent covariates. Its formula can be shown as follow:
+
+$$
+h(t|X(t)) = h_0(t) \exp\left( \beta_1 \cdot \text{Treatment} + \beta_2 \cdot \text{Gender} + \beta_3 \cdot \text{Race} + \beta_4 \cdot \text{PercentBurned} + \beta_5 \cdot \text{BurnType} + \gamma_1 \cdot \text{Excision}(t) + \gamma_2 \cdot \text{Antibiotics}(t) \right)
+$$
+
+where $\gamma_j$ is the coefficients for time-dependent covariates.
+
+From the table below, RaceWhite is the only variable with a p-value less than 0.05 (p = 0.030), indicating statistical significance. The hazard ratio for RaceWhite (HR = 9.401) suggests that patients identified as White have a significantly higher hazard of the event (e.g., infection) compared to the reference category. This finding implies that race is an important predictor of infection risk in this model, potentially influenced by biological, environmental, or systemic factors. Other variables, such as Treatment, Burn Type, Excision, and Antibiotics, do not show statistical significance at the 5% level, suggesting no strong independent effects on the hazard in this dataset.
+
+```{r}
+# Define the survival object with counting process style (start, stop, event)
+surv_obj <- Surv(time = burn2$tstart, time2 = burn2$tstop, event = burn2$status)
+
+# Fit the Cox model with time-dependent and time-independent covariates
+cox_td <- coxph(surv_obj ~ Treatment + Gender + Race + PercentBurned + BurnType + Excision + Antibiotics, data = burn2)
+
+summary_cox_td = summary(cox_td)
+cox_output_td <- data.frame(
+  Variable = rownames(summary_cox_td$coefficients),
+  Coefficient = summary_cox_td$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_td$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_td$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_td$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_td$coefficients[, "z"],
+  `P-value` = summary_cox_td$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_td[, -1] <- round(cox_output_td[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_td, format = "html", align = "c",
+      row.names = FALSE,
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 10. Cox Model Summary - Full Model with Time-Dependent Predictors" = 7))
+```
+
+Using stepwise selection with stepAIC, the best model was chosen based on minimizing the Akaike Information Criterion (AIC). In the selected model with summary shown in the table below, RaceWhite remains statistically significant with a p-value of 0.025 and a hazard ratio of 9.937, indicating that White patients are at a significantly higher risk of the event (e.g., infection) compared to the reference group. Other variables, including TreatmentCleansing (p = 0.097), BurnTypeScald (p = 0.198), BurnTypeElectric (p = 0.070), BurnTypeFlame (p = 0.379), and Excision (p = 0.079), were not statistically significant at the 5% level but remain in the model, suggesting their potential importance in explaining variability in the data. The coefficients indicate the direction and magnitude of these predictors' effects on the hazard, with Excision associated with a lower hazard (HR = 0.417), potentially reducing risk. These results highlight RaceWhite as the most robust predictor while suggesting that other variables may require further investigation.
+
+
+```{r}
+library(MASS)
+
+# Perform stepwise regression to select the best predictors
+cox_td_best <- stepAIC(cox_td, direction = "both", trace = FALSE)
+
+# Summarize the final model
+summary_cox_td_best = summary(cox_td_best)
+cox_output_td_best <- data.frame(
+  Variable = rownames(summary_cox_td_best$coefficients),
+  Coefficient = summary_cox_td_best$coefficients[, "coef"],
+  HazardRatio = exp(summary_cox_td_best$coefficients[, "coef"]),
+  `95% CI Lower` = summary_cox_td_best$conf.int[, "lower .95"],
+  `95% CI Upper` = summary_cox_td_best$conf.int[, "upper .95"],
+  `z-Statistic` = summary_cox_td_best$coefficients[, "z"],
+  `P-value` = summary_cox_td_best$coefficients[, "Pr(>|z|)"]
+)
+
+cox_output_td_best[, -1] <- round(cox_output_td_best[, -1], 3)
+
+# Format table with kableExtra
+kable(cox_output_td_best, format = "html", align = "c",
+      row.names = FALSE,
+      col.names = c("Variable", "Coefficient", "Hazard Ratio", 
+                    "Lower 95% CI", "Upper 95% CI", "z-Statistic", "P-value")) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%
+  add_header_above(c("Table 11. Cox Model Summary - Best Stepwise Regression Model with Time-Dependent Predictors" = 7))
+```
+
+
+### Model Diagnostic
+
+To ensure the validity and reliability of the Cox model, it is crucial to run diagnostic checks. The proportional hazards assumption is a fundamental requirement for the Cox model. This can be tested using Schoenfeld residuals:
+
+```{r}
+ph_test2 <- cox.zph(cox_td_best)
+
+# Convert the test results into a data frame
+ph_test_df2 <- as.data.frame(ph_test2$table)
+
+# Add appropriate column names
+colnames(ph_test_df2) <- c("Chi-Square", "Degrees of Freedom", "P-Value")
+
+# Create a formatted kable table and assign a name
+kable(
+  ph_test_df2, 
+  
+  format = "html", 
+  digits = 3,  # Round to 3 decimal places
+) %>%
+  kable_styling(full_width = TRUE, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  row_spec(0, bold = TRUE) %>%  # Highlight header row
+  add_header_above(c("Table 12. Proportional Hazards Assumption Test" = 4))
+
+```
+
+From the results above, it can be observed that the p-values for Treatment (0.640), Race (0.134) and Excision (0.560) are all greater than 0.05, indicating no evidence of a violation of the proportional hazards assumption for these variables. However, the p-value for Burn Type (0.035) is less than 0.05, suggesting that the proportional hazards assumption may be violated for the BurnType variable. This violation contributes to the p-value for the GLOBAL test (0.051) being around 0.05, providing marginal evidence of an overall violation of the proportional hazards assumption.
+
+```{r}
+par(mfrow = c(2, 2))
+plot(ph_test2, var = "Treatment", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for Treatment")
+plot(ph_test2, var = "Race", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for Race")
+plot(ph_test2, var = "BurnType", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for BurnType")
+plot(ph_test2, var = "Excision", resid = TRUE, se = TRUE, main = "Schoenfeld Residuals for Excision")
+mtext("Figure 7. Schoenfeld Residuals for Cox Model with Time-Dependent Predictors", side = 3, line = -1, outer = TRUE)
+par(mfrow = c(1, 1))
+```
+
+The Schoenfeld residual plots indicate that the proportional hazards assumption is reasonably met for Treatment, Race and Excision, but there is evidence of a potential violation for BurnType (a noticeable trend over time).
+Therefore, we need to use stratification, as it allows the baseline hazard to vary by the stratified variable, addressing the non-proportionality for BurnType. By stratifying the model on Burn Type, we account for the varying baseline hazard across its levels, ensuring that the proportional hazards assumption holds for the remaining covariates. This approach improves the model's fit and ensures more reliable results.
+
+
+```{r include=FALSE}
+strat.cox2 <- coxph(Surv(T3, D3) ~ Treatment + Race + Excision + strata(BurnType), data = burn2)
+summary(strat.cox2)
+```
+
+We need to test the assumption of the same regression coefficients for each stratum by testing the interaction between the stratification variable and the covariates. We get a p-value of 0.1209 from the ANOVA which means that there is no significant difference between the stratified model with interaction and the stratified model without interaction terms. This means that the coefficients are not significantly different between the stratified models and the only difference is in the baseline hazard. So it is appropriate to use a stratified model.
+
+
+```{r include=FALSE}
+#fit interaction model
+inter.cox2 <- coxph(Surv(T3, D3) ~ (Treatment + Race + Excision)*strata(BurnType), data = burn2)
+summary(inter.cox2)
+```
+
+
+```{r include=FALSE}
+anova(strat.cox2, inter.cox2, test = "Chisq")
+```
+
+So our final Cox Model with time-dependent predictors can be shown as:
+
+$$
+h(t|X) = h_0^{\text{BurnType}}(t) \exp\left( -0.7620 \cdot \text{TreatmentCleansing} + 1.4143 \cdot \text{RaceWhite} - 0.8085 \cdot \text{Excision} \right)
+$$
+
+The baseline Hazard $h_0^{\text{BurnType}}(t)$ varies across the levels of BurnType (Chemical, Scald, Electric, Flame), shown in Table 8. The cleansing reduces the risk of infection by approximately 52.7% compared to Routine. White patients have approximately 311.4% higher infection risk compared to Nonwhite patients. Patients with surgical excision reduces the risk of infection by approximately 55.5% compared to those without surgical excision.
+
+```{r}
+# Extract the baseline cumulative hazard for the stratified Cox model
+baseline_hazard <- basehaz(strat.cox2, centered = FALSE)
+
+# View the baseline hazard for each stratum
+# head(baseline_hazard)
+
+# Plot the baseline cumulative hazards for each stratum
+library(ggplot2)
+
+ggplot(baseline_hazard, aes(x = time, y = hazard, color = strata)) +
+  geom_step() +
+  labs(
+    title = "Figure 8. Baseline Cumulative Hazard by BurnType",
+    x = "Time",
+    y = "Cumulative Hazard",
+    color = "BurnType"
+  ) +
+  theme_minimal()
+
+```
+
+
+### Outliers and Influential Points
+
+
+```{r include=FALSE}
+#fit residuals: martingale, deviance, and df beta
+strat.cox2.mart <- residuals(strat.cox2,type="martingale")
+strat.cox2.dev <- residuals(strat.cox2,type="deviance")
+strat.cox2.dfb <- residuals(strat.cox2,type="dfbeta")
+
+#find linear predictor
+strat.cox2.preds <- predict(strat.cox2)
+```
+
+
+
+The plots have been included in the appendix, and from these plots, the following outliers were identified:
+
+- Martingale Residuals: 32, 22, 41
+
+- Deviance Residuals: 79, 153, 115, 32, 22, 41
+
+- Treatment Influence: 32, 58, 90, 116, 113
+
+- Race Influence: 64, 37, 48, 67
+
+- Excision Influence: 22, 41, 90, 91, 92, 116, 151
+
+The most important observations to examine seem to be 22, 32, 41, 90, 116.
+
+```{r}
+unusuals2 <- c(22, 32, 41, 90, 116)
+
+selected_rows2 <- burn1[burn1$Obs %in% unusuals2, c("Obs","T1","D1","T3","D3","Treatment","Race","BurnType")]
+
+kable(selected_rows2, 
+      row.names = F,
+      col.names = c("Observation", "Time to Excision", "Excision Indicator",  "Time to Infection", "Infection Status", "Treatment", "Race", "Burn Type")) %>%
+  kable_styling(full_width = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  add_header_above(c("Table 13. Ourliers of Cox Model with Time-Independent Predictors" = 8))
+```
+
+Observation 22 underwent excision at time 14, but still experienced a staphylococcus aureus infection at time 56.
+Observation 32 is under Routine treatment, identified as White, did not undergo excision, and lived relatively long without experiencing a staphylococcus aureus infection.
+Observation 41 underwent excision at time 14 and, although under Routine treatment and identified as White, survived until time 97.
+Observation 90 is under Cleansing treatment and underwent excision at time 11, but quickly developed a staphylococcus aureus infection at time 18.
+Observation 116 is under Cleansing treatment, identified as Nonwhite, underwent excision at time 6, but developed a staphylococcus aureus infection at time 42.
+
+
+# Clinical Implications and Recommendations
+
+The selected Cox proportional hazards model highlights key factors influencing infection risk in burn patients. Treatment with total body washing (Cleansing) significantly reduces infection risk, supporting its clinical effectiveness over routine bathing. Additionally, Race (White) was identified as a significant predictor, with White patients exhibiting a higher risk of infection, emphasizing the need for tailored interventions for this group. The inclusion of Excision in the model demonstrates its protective effect, suggesting that timely surgical excision can further mitigate infection risk. These findings underscore the importance of incorporating total body washing and prompt excision into routine care while monitoring high-risk groups to optimize infection control strategies and improve patient outcomes.
+
+
+
+# Limitations and Future Directions
+
+
+This analysis has several limitations. First, the study's non-randomized design may introduce selection bias, as the treatment assignment was not random. Second, certain potentially important variables, such as burn depth and patient comorbidities, were not included in the dataset, which may limit the comprehensiveness of the findings. Additionally, while the model incorporated time-dependent covariates, the potential for residual confounding remains. Future research should focus on validating these findings in a randomized controlled trial and incorporating additional clinical and demographic factors. Furthermore, exploring advanced modeling approaches, such as machine learning methods, may uncover non-linear relationships and interactions that are not captured in the Cox model, offering deeper insights into infection risk management.
+
+
+# Figure Appendix {.unnumbered}
+
+```{r}
+plot(strat.cox.preds,strat.cox.mart,xlab="Linear Predictor",
+     ylab="Martingale Residual", ylim = c(-1.5,1.5), pch = 19, col = "purple", cex = 0.5)
+text(strat.cox.preds,strat.cox.mart+0.1, labels = burn1$Obs)
+title("Martingale Residuals vs. Linear Predictor")
+```
+
+
+```{r}
+plot(strat.cox.preds,strat.cox.dev,xlab="Linear Predictor",
+     ylab="Deviance Residual", ylim = c(-2,3), pch = 19, col = "blue", cex = 0.7)
+text(strat.cox.preds+0.2,strat.cox.dev, labels = burn1$Obs)
+title("Deviance Residuals vs. Linear Predictor")
+```
+
+```{r}
+plot(strat.cox.dfb[,1], main = "dfBeta vs Obs Order", 
+     xlab = "Observation", ylab = "dfBeta(Treatment)", 
+     pch = 19, cex = 0.7, col = 7, ylim = c(-0.04, 0.07))
+text(strat.cox.dfb[,1]+0.01, labels=burn1$Obs)
+```
+
+```{r}
+plot(strat.cox.dfb[,2], main = "dfBeta vs Obs Order", 
+     xlab = "Observation", ylab = "dfBeta(Race)", 
+     pch = 19, cex = 0.7, col = 7, ylim = c(-0.08, 0.12))
+text(strat.cox.dfb[,2]+0.01, labels=burn1$Obs)
+```
+
+
+```{r}
+plot(strat.cox2.preds,strat.cox2.mart,xlab="Linear Predictor",
+     ylab="Martingale Residual", ylim = c(-1.5,1.5), pch = 19, col = "purple", cex = 0.5)
+text(strat.cox2.preds,strat.cox2.mart+0.1, labels = burn2$Obs)
+title("Martingale Residuals vs. Linear Predictor")
+```
+
+
+```{r}
+plot(strat.cox2.preds,strat.cox2.dev,xlab="Linear Predictor",
+     ylab="Deviance Residual", ylim = c(-2,3), pch = 19, col = "blue", cex = 0.7)
+text(strat.cox2.preds+0.2,strat.cox2.dev, labels = burn2$Obs)
+title("Deviance Residuals vs. Linear Predictor")
+```
+
+```{r}
+plot(strat.cox2.dfb[,1], main = "dfBeta vs Obs Order", 
+     xlab = "Observation", ylab = "dfBeta(Treatment)", 
+     pch = 19, cex = 0.7, col = 7, ylim = c(-0.04, 0.07))
+text(strat.cox2.dfb[,1]+0.01, labels=burn2$Obs)
+```
+
+```{r}
+plot(strat.cox2.dfb[,2], main = "dfBeta vs Obs Order", 
+     xlab = "Observation", ylab = "dfBeta(Race)", 
+     pch = 19, cex = 0.7, col = 7, ylim = c(-0.08, 0.12))
+text(strat.cox2.dfb[,2]+0.01, labels=burn2$Obs)
+```
+
+```{r}
+plot(strat.cox2.dfb[,3], main = "dfBeta vs Obs Order", 
+     xlab = "Observation", ylab = "dfBeta(Excision)", 
+     pch = 19, cex = 0.7, col = 7, ylim = c(-0.08, 0.12))
+text(strat.cox2.dfb[,3]+0.01, labels=burn2$Obs)
+```
+
+
+
+
+
+<p>
+# Code Appendix {.unnumbered}
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+
