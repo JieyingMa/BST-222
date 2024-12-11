@@ -6,3 +6,6 @@
 
 This report evaluates the effectiveness of infection control methods in burn patients, focusing on the comparison between routine bathing and total body washing with an antimicrobial agent. The study aimed to assess survival outcomes, identify significant predictors of infection risk, and provide actionable clinical recommendations. Key findings reveal that total body washing significantly reduces infection risk compared to routine bathing, with a hazard reduction of approximately 52.7%. Additionally, surgical excision was shown to further decrease infection risk, while White patients were identified as a higher-risk group. Based on these findings, we recommend adopting total body washing as a standard infection control method, ensuring timely surgical excision, and implementing targeted interventions for high-risk populations to optimize patient outcomes.
 
+### Report Preview
+You can preview the report [here](https://rawcdn.githack.com/JieyingMa/BST222/08ff2b1ceb4cc508fc63ecbe5065fa8f9d4501a0/BST222-final-report.html#2_Data_overview).
+
